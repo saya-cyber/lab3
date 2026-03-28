@@ -2,14 +2,15 @@ pipeline {
     agent any
 
     environment {
-        // Jenkins-те құрған Secret text-тің ID-і осы жерде болуы керек
+        // Jenkins-те сақталған токенді аламыз
         KUBECONFIG_TOKEN = credentials('jenkins-token')
+        // Кластердің адресін (Kind болса, әдетте осылай болады)
+        K8S_API_URL = "https://kubernetes.default.svc:443"
     }
 
     stages {
         stage('Setup Helm Repo') {
             steps {
-                // Репозиторийді қосу және жаңарту
                 sh 'helm repo add msvc-repo https://anshelen.github.io/microservices-deploy/'
                 sh 'helm repo update'
             }
@@ -17,19 +18,21 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                // Дұрыс команда: репозиторий/чарт_аты
-                // Егер бұрын токенмен проблема болса, осы жерде қолданылады
-                sh 'helm upgrade --install demo msvc-repo/msvc-chart --namespace demo'
+                // Токенді тікелей Helm командасына қосамыз
+                sh """
+                helm upgrade --install demo msvc-repo/msvc-chart \
+                --namespace demo \
+                --set kubeToken=${KUBECONFIG_TOKEN} \
+                --kube-apiserver ${K8S_API_URL} \
+                --kube-token ${KUBECONFIG_TOKEN} \
+                --insecure-skip-tls-verify
+                """
             }
         }
     }
     
     post {
-        success {
-            echo 'Деплой сәтті аяқталды!'
-        }
-        failure {
-            echo 'Қате шықты. Логтарды тексеріңіз.'
-        }
+        success { echo 'Деплой сәтті аяқталды!' }
+        failure { echo 'Қате шықты. Тікелей токен әдісін тексеріңіз.' }
     }
 }
